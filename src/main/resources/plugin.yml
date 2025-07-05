@@ -4,3 +4,9 @@ main: fr.thipow.undercover.Undercover
 api-version: '1.21'
 authors: [ Aximox, Thipow ]
 description: Plugin mini-jeu undercover
+
+commands:
+    undercover:
+        description: Commande principale du plugin Undercover
+        usage: /<command> [args]
+        aliases: [uc]
