@@ -1,0 +1,6 @@
+name: Undercover
+version: '1.0.1'
+main: fr.thipow.undercover.Undercover
+api-version: '1.21'
+authors: [ Aximox, Thipow ]
+description: Plugin mini-jeu undercover
