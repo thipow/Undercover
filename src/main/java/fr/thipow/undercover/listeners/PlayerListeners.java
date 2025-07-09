@@ -2,11 +2,13 @@ package fr.thipow.undercover.listeners;
 
 import fr.thipow.undercover.Undercover;
 import fr.thipow.undercover.game.EStates;
+import fr.thipow.undercover.game.GameManager;
 import fr.thipow.undercover.gui.ConfigGUI;
 import fr.thipow.undercover.managers.ScoreboardManager;
 import fr.thipow.undercover.utils.ItemBuilder;
 import io.papermc.paper.event.player.PlayerInventorySlotChangeEvent;
 import io.papermc.paper.event.player.PlayerPickItemEvent;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -53,6 +55,15 @@ public class PlayerListeners implements Listener {
             ConfigGUI configGUI = new ConfigGUI(player);
             configGUI.open(player);
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+        }
+
+        if(event.getItem().getType() == Material.FEATHER){
+            if(!player.equals(GameManager.getCurrentPlayer())) return;
+
+            event.setCancelled(true);
+            player.getInventory().setItem(8, item);
+            GameManager.nextTurn();
+            Bukkit.broadcastMessage(GameManager.getCurrentPlayer() + "à passé son tour de parole !");
         }
     }
 

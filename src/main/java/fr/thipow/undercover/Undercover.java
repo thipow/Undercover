@@ -1,6 +1,7 @@
 package fr.thipow.undercover;
 
 import fr.thipow.undercover.commands.UndercoverCommand;
+import fr.thipow.undercover.commands.VoteCommand;
 import fr.thipow.undercover.game.GameManager;
 import fr.thipow.undercover.game.GameTask;
 import fr.thipow.undercover.listeners.ListenersManager;
@@ -34,6 +35,7 @@ public final class Undercover extends JavaPlugin {
 
 
         Objects.requireNonNull(getCommand("undercover")).setExecutor(new UndercoverCommand());
+        Objects.requireNonNull(getCommand("vote")).setExecutor(new VoteCommand());
 
     }
 

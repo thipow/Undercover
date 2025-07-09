@@ -8,22 +8,140 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 public class GameManager {
 
-    private        EStates             gameState   = EStates.WAITING;
-    private static ArrayList<Player>   gamePlayers = new ArrayList<>();
-    private        Map<Player, ERoles> playerRoles = new HashMap<>();
+    private static ArrayList<Player>   gamePlayers        = new ArrayList<>();
+    private static int                 currentPlayerIndex = 0;
+    private static boolean             inVotingPhase      = false;
+    private static Map<Player, Player> votes              = new HashMap<>();
+    private static Map<Player, ERoles> playerRoles        = new HashMap<>();
+    private        EStates             gameState          = EStates.WAITING;
     private        Undercover          main;
-    private String[] words = getWords();
+    private        String[]            words              = getWords();
 
     public GameManager(Undercover main) {
         this.main = main;
+    }
+
+    public static void startRound() {
+        currentPlayerIndex = 0;
+        inVotingPhase = false;
+        nextTurn();
+        Player firstPlayer = getFirstPlayerToPlay(gamePlayers);
+        giveSkipItem(firstPlayer);
+
+    }
+
+    public static boolean isInVotingPhase() {
+        return inVotingPhase;
+    }
+
+    public static void nextTurn() {
+        if (currentPlayerIndex >= gamePlayers.size()) {
+            startVotingPhase();
+            return;
+        }
+
+        Player current = gamePlayers.get(currentPlayerIndex);
+        Bukkit.broadcastMessage("§aC'est au tour de " + current.getName() + " de jouer !");
+        giveSkipItem(current);
+
+        Bukkit.getScheduler().runTaskLater(Undercover.getInstance(), () -> {
+            if (getCurrentPlayer() == current) {
+                Bukkit.broadcastMessage("§c" + current.getName() + " a dépassé son temps de parole !");
+                currentPlayerIndex++;
+                nextTurn();
+            }
+        }, 20 * 20L);
+
+    }
+
+    public static void startVotingPhase() {
+        inVotingPhase = true;
+        Bukkit.broadcastMessage("§cLa phase de vote commence !");
+        votes.clear();
+    }
+
+    public static void vote(Player voter, Player target) {
+        if (!inVotingPhase) {
+            voter.sendMessage("§cLa phase de vote n'est pas active !");
+            return;
+        }
+
+        if (votes.containsKey(voter)) {
+            voter.sendMessage("§cVous avez déjà voté !");
+            return;
+        }
+
+        votes.put(voter, target);
+        voter.sendMessage("§aVous avez voté pour " + target.getName() + " !");
+
+        if (votes.size() >= gamePlayers.size()) {
+            endVotingPhase();
+        }
+    }
+
+    public static void endVotingPhase() {
+        Map<Player, Integer> voteCount = new HashMap<>();
+        for (Player voted : votes.values()) {
+            voteCount.put(voted, voteCount.getOrDefault(voted, 0) + 1);
+        }
+
+        Player eliminatedPlayer = null;
+        int maxVotes = 0;
+        for (Map.Entry<Player, Integer> entry : voteCount.entrySet()) {
+            if (entry.getValue() > maxVotes) {
+                eliminatedPlayer = entry.getKey();
+                maxVotes = entry.getValue();
+            }
+        }
+        if (eliminatedPlayer != null) {
+            Bukkit.broadcastMessage("§c" + eliminatedPlayer.getName() + " a été éliminé avec " + maxVotes + " votes !");
+            gamePlayers.remove(eliminatedPlayer);
+            eliminatedPlayer.getInventory().clear();
+            eliminatedPlayer.setGameMode(GameMode.SPECTATOR);
+            eliminatedPlayer.teleport(new Location(Bukkit.getWorld("world"), 0, 80, 0, 90, 0));
+        }
+
+    }
+
+    public static void checkVictoryConditions() {
+        long undercoverLeft = gamePlayers.stream().filter(p -> playerRoles.get(p) == ERoles.UNDERCOVER).count();
+        long civilLeft = gamePlayers.stream().filter(p -> playerRoles.get(p) == ERoles.CIVIL).count();
+        long whiteLeft = gamePlayers.stream().filter(p -> playerRoles.get(p) == ERoles.WHITE).count();
+
+        if (undercoverLeft == 0) {
+            Bukkit.broadcastMessage("§cLes Civils ont gagné !");
+        } else if (undercoverLeft >= civilLeft) {
+            Bukkit.broadcastMessage("§aLes Undercover ont gagné !");
+        } else {
+            startRound();
+        }
+    }
+
+    public static void giveSkipItem(Player player) {
+        player.getInventory().setItem(0, new ItemBuilder(Material.FEATHER).setName("§cTerminé").toItemStack());
+    }
+
+    public static String[] getWords() {
+        EWords[] allPairs = EWords.values();
+        EWords pair = allPairs[(int) (Math.random() * allPairs.length)];
+        return new String[]{pair.getWord1(), pair.getWord2()};
+    }
+
+    public static Player getCurrentPlayer() {
+        if (gamePlayers.isEmpty() || currentPlayerIndex >= gamePlayers.size()) {
+            return null;
+        }
+        return gamePlayers.get(currentPlayerIndex);
     }
 
     public void initGame() {
@@ -49,10 +167,10 @@ public class GameManager {
         }
     }
 
-    public void startGame(){
+    public void startGame() {
         distributeRoles();
         setGameState(EStates.PLAYING);
-        for(Player player : gamePlayers) {
+        for (Player player : gamePlayers) {
             ERoles role = playerRoles.get(player);
 
             switch (role) {
@@ -72,33 +190,9 @@ public class GameManager {
         }
 
         Bukkit.getScheduler().runTaskLater(main, () -> {
-            GameTask gameTask = new GameTask(main);
-            gameTask.runTaskTimer(main, 0L, 20L);
+            startRound();
         }, 20L);
     }
-
-    public static void startRound(){
-        Player firstPlayer = getFirstPlayerToPlay(gamePlayers);
-        Bukkit.broadcastMessage("§eLe joueur §b" + firstPlayer.getName() + "§e est le premier à jouer !");
-        giveSkipItem(firstPlayer);
-
-    }
-
-    public static void nextRound(Player player){
-
-    }
-
-    public static void giveSkipItem(Player player){
-        player.getInventory().setItem(0, new ItemBuilder(Material.FEATHER).setName("§cTerminé").toItemStack());
-    }
-
-    public static String[] getWords(){
-        EWords[] allPairs = EWords.values();
-        EWords pair = allPairs[(int) (Math.random() * allPairs.length)];
-        return new String[] {pair.getWord1(), pair.getWord2()};
-    }
-
-
 
     public ArrayList<Player> getGamePlayers() {
         return gamePlayers;
