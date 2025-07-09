@@ -10,6 +10,3 @@ commands:
         description: Commande principale du plugin Undercover
         usage: /<command> [args]
         aliases: [uc]
-    vote:
-        description: Commande pour voter pour contre un joueur
-        usage: /<command> <pseudo>

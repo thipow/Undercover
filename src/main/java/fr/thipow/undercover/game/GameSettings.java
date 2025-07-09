@@ -2,11 +2,11 @@ package fr.thipow.undercover.game;
 
 public class GameSettings {
 
-    private static boolean undercoverChat = true;
-    private static boolean whiteEnabled = true;
-    private static int maxPlayer = 12;
-    private static int undercoverCount = 2;
-    private static int whiteCount = 1;
+    private static boolean showUndercoverNames = true;
+    private static boolean whiteEnabled = false;
+    private static int maxPlayer = 4;
+    private static int undercoverCount = 1;
+    private static int whiteCount = 0;
 
     public static int getWhiteCount() {
         return whiteCount;
@@ -16,12 +16,12 @@ public class GameSettings {
         GameSettings.whiteCount = whiteCount;
     }
 
-    public static boolean isUndercoverChat() {
-        return undercoverChat;
+    public static boolean isUndercoverNameShowing() {
+        return showUndercoverNames;
     }
 
-    public static void setUndercoverChat(final boolean undercoverChat) {
-        GameSettings.undercoverChat = undercoverChat;
+    public static void setShowUndercoverNames(final boolean showUndercoverNames) {
+        GameSettings.showUndercoverNames = showUndercoverNames;
     }
 
     public static boolean isWhiteEnabled() {

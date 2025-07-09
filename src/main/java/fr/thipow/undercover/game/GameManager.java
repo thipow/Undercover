@@ -1,12 +1,12 @@
 package fr.thipow.undercover.game;
 
-import static fr.thipow.undercover.game.GameTask.getFirstPlayerToPlay;
 
 import fr.thipow.undercover.Undercover;
 import fr.thipow.undercover.utils.ItemBuilder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -14,12 +14,11 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 
 public class GameManager {
 
+    public static  int                 currentPlayerIndex = 0;
     private static ArrayList<Player>   gamePlayers        = new ArrayList<>();
-    private static int                 currentPlayerIndex = 0;
     private static boolean             inVotingPhase      = false;
     private static Map<Player, Player> votes              = new HashMap<>();
     private static Map<Player, ERoles> playerRoles        = new HashMap<>();
@@ -35,9 +34,6 @@ public class GameManager {
         currentPlayerIndex = 0;
         inVotingPhase = false;
         nextTurn();
-        Player firstPlayer = getFirstPlayerToPlay(gamePlayers);
-        giveSkipItem(firstPlayer);
-
     }
 
     public static boolean isInVotingPhase() {
@@ -57,6 +53,7 @@ public class GameManager {
         Bukkit.getScheduler().runTaskLater(Undercover.getInstance(), () -> {
             if (getCurrentPlayer() == current) {
                 Bukkit.broadcastMessage("§c" + current.getName() + " a dépassé son temps de parole !");
+                current.getInventory().clear();
                 currentPlayerIndex++;
                 nextTurn();
             }
@@ -104,13 +101,14 @@ public class GameManager {
             }
         }
         if (eliminatedPlayer != null) {
-            Bukkit.broadcastMessage("§c" + eliminatedPlayer.getName() + " a été éliminé avec " + maxVotes + " votes !");
+            Bukkit.broadcastMessage("§c" + eliminatedPlayer.getName() + " a été éliminé avec " + maxVotes + " votes ! Il était "
+                + playerRoles.get(eliminatedPlayer).getColor() + playerRoles.get(eliminatedPlayer).getName() + " !");
             gamePlayers.remove(eliminatedPlayer);
             eliminatedPlayer.getInventory().clear();
             eliminatedPlayer.setGameMode(GameMode.SPECTATOR);
             eliminatedPlayer.teleport(new Location(Bukkit.getWorld("world"), 0, 80, 0, 90, 0));
         }
-
+        checkVictoryConditions();
     }
 
     public static void checkVictoryConditions() {
@@ -123,7 +121,11 @@ public class GameManager {
         } else if (undercoverLeft >= civilLeft) {
             Bukkit.broadcastMessage("§aLes Undercover ont gagné !");
         } else {
-            startRound();
+            Bukkit.broadcastMessage("§bLa partie continue, reprise dans 5 secondes...");
+            Bukkit.getScheduler().runTaskLater(Undercover.getInstance(), () -> {
+                startRound();
+            }, 5 * 20L);
+
         }
     }
 
@@ -169,29 +171,64 @@ public class GameManager {
 
     public void startGame() {
         distributeRoles();
+        for (Player player : gamePlayers) {
+            player.getInventory().clear();
+        }
         setGameState(EStates.PLAYING);
         for (Player player : gamePlayers) {
             ERoles role = playerRoles.get(player);
 
+            String undercoverWord = capitalize(words[0]);
+            String civilWord = capitalize(words[1]);
+
             switch (role) {
                 case UNDERCOVER:
                     player.playSound(player.getLocation(), Sound.ENTITY_WOLF_GROWL, 1, 1);
-                    player.sendTitle(role.getColor() + role.getName(), words[0], 20, 100, 20);
+                    player.sendTitle(role.getColor() + role.getName(), undercoverWord, 20, 100, 20);
+                    player.sendMessage(
+                        "Tu est " + role.getColor() + role.getName() + " !\n" + "Ton mot est : §3" + undercoverWord
+                            + " !");
                     break;
                 case WHITE:
                     player.playSound(player.getLocation(), Sound.ITEM_GOAT_HORN_SOUND_3, 1, 1);
                     player.sendTitle(role.getColor() + role.getName(), "§fVous n'avez pas de mot !", 20, 100, 20);
+                    player.sendMessage("Tu est " + role.getColor() + role.getName() + " !\n"
+                        + "§3Vous n'avez pas de mot, vous devez deviner celui des Undercover !");
                     break;
                 case CIVIL:
                     player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1, 1);
-                    player.sendTitle(role.getColor() + role.getName(), words[1], 20, 100, 20);
+                    player.sendTitle(role.getColor() + role.getName(), civilWord, 20, 100, 20);
+                    player.sendMessage(
+                        "Tu est " + role.getColor() + role.getName() + " !\n" + "Ton mot est : §3" + civilWord + " !");
                     break;
+            }
+        }
+
+        if (GameSettings.isUndercoverNameShowing()) {
+            for (Player player : gamePlayers) {
+                List<Player> undercoverPlayers = gamePlayers.stream()
+                    .filter(p -> playerRoles.get(p) == ERoles.UNDERCOVER).toList();
+                if (Undercover.getInstance().getGameManager().getPlayerRole(player) == ERoles.UNDERCOVER) {
+                    player.sendMessage("§cVoici la liste de vos associés Undercover :");
+                    for (Player undercover : undercoverPlayers) {
+                        if (!undercover.equals(player)) {
+                            player.sendMessage("§f- §3" + undercover.getName());
+                        }
+                    }
+                }
             }
         }
 
         Bukkit.getScheduler().runTaskLater(main, () -> {
             startRound();
         }, 20L);
+    }
+
+    private String capitalize(String word) {
+        if (word == null || word.isEmpty()) {
+            return word;
+        }
+        return word.substring(0, 1).toUpperCase() + word.substring(1);
     }
 
     public ArrayList<Player> getGamePlayers() {

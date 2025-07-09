@@ -35,6 +35,7 @@ public class PlayerListeners implements Listener {
         player.sendMessage("§aBienvenue dans §2Undercover!");
 
         if(main.getGameManager().isGameState(EStates.WAITING)) {
+            player.getInventory().clear();
             ScoreboardManager.createScoreboard(player);
             main.getGameManager().getGamePlayers().add(player);
 
@@ -61,9 +62,12 @@ public class PlayerListeners implements Listener {
             if(!player.equals(GameManager.getCurrentPlayer())) return;
 
             event.setCancelled(true);
-            player.getInventory().setItem(8, item);
+            player.getInventory().clear();
+            Bukkit.broadcastMessage(GameManager.getCurrentPlayer().getName() + " à passé son tour de parole !");
+            GameManager.currentPlayerIndex++;
             GameManager.nextTurn();
-            Bukkit.broadcastMessage(GameManager.getCurrentPlayer() + "à passé son tour de parole !");
+
+
         }
     }
 
@@ -99,6 +103,15 @@ public class PlayerListeners implements Listener {
         ScoreboardManager.deleteScoreboard(player);
         if(main.getGameManager().isGameState(EStates.WAITING)) {
             main.getGameManager().getGamePlayers().remove(player);
+        }
+        if(main.getGameManager().isGameState(EStates.PLAYING)) {
+            main.getGameManager().getGamePlayers().remove(player);
+            Bukkit.broadcastMessage("§c" + player.getName() + " a quitté la partie !");
+            if(GameManager.getCurrentPlayer().equals(player)) {
+                Bukkit.broadcastMessage("§c" + player.getName() + " était le joueur en cours, on passe au suivant !");
+                GameManager.currentPlayerIndex++;
+                GameManager.nextTurn();
+            }
         }
     }
 

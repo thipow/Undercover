@@ -90,13 +90,13 @@ public class ConfigGUI extends FastInv {
             }
         });
 
-        ItemStack undercoverChatItem = new ItemBuilder(Material.NAME_TAG, 1).setName("§bChat Undercover")
-            .setLore("§8", "§fValeur actuelle: §3" + (GameSettings.isUndercoverChat() ? "§aActivé" : "§cDésactivé"),
+        ItemStack showUndercoverNames = new ItemBuilder(Material.NAME_TAG, 1).setName("§bConnaître ses alliés")
+            .setLore("§8", "§fValeur actuelle: §3" + (GameSettings.isUndercoverNameShowing() ? "§aActivé" : "§cDésactivé"),
                 "§f", "§bCliquez pour modifier").toItemStack();
 
-        setItem(21, undercoverChatItem, e -> {
+        setItem(21, showUndercoverNames, e -> {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
-            GameSettings.setUndercoverChat(!GameSettings.isUndercoverChat());
+            GameSettings.setShowUndercoverNames(!GameSettings.isUndercoverNameShowing());
             refresh(player);
         });
 
@@ -181,7 +181,7 @@ public class ConfigGUI extends FastInv {
 
         ItemStack summaryItem = new ItemBuilder(Material.NETHER_STAR, 1).setName("§bRésumé de la configuration :")
             .setLore("§8", "§fPlaces : §3" + GameSettings.getMaxPlayer(),
-                "§fChat Undercover : " + (GameSettings.isUndercoverChat() ? "§aActivé" : "§cDésactivé"),
+                "§fChat Undercover : " + (GameSettings.isUndercoverNameShowing() ? "§aActivé" : "§cDésactivé"),
                 "§fMr.White : " + (GameSettings.isWhiteEnabled() ? "§aActivé" : "§cDésactivé"),
                 "§fNombre d'Undercover : §3" + GameSettings.getUndercoverCount(),
                 "§fNombre de Mr.White : §3" + GameSettings.getWhiteCount()).toItemStack();

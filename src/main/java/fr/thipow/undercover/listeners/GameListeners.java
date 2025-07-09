@@ -1,12 +1,17 @@
 package fr.thipow.undercover.listeners;
 
+import fr.thipow.undercover.Undercover;
+import fr.thipow.undercover.game.ERoles;
+import fr.thipow.undercover.game.EStates;
 import fr.thipow.undercover.game.GameManager;
 import java.util.List;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.util.Vector;
 
@@ -28,6 +33,11 @@ public class GameListeners implements Listener {
         }
 
         GameManager.vote(voter, target);
+    }
+
+    @EventHandler
+    public void onChat(AsyncPlayerChatEvent event) {
+        event.setFormat("§f" + event.getPlayer().getName() + " §8§l» §7" + event.getMessage());
     }
 
     public Player getTargetPlayer(Player viewer, double maxDistance){
