@@ -1,0 +1,43 @@
+default-settings:
+  showUndercoverNames: false
+  whiteEnabled: true
+  slots: 10
+  undercoverCount: 3
+  whiteCount: 1
+
+messages:
+  prefix: "§c§lUNDERCOVER §7| §r"
+  join-messages:
+    - "§fBienvenue §b%player_name% §fsur §c§lUndercover§f !"
+    - ""
+    - "§fLe but du jeu est simple :"
+    - "§8§l» §fTrouver qui sont les §cUndercover§f."
+    - ""
+    - "§fUtilisez le §elivre§f dans votre inventaire"
+    - "§8§l» §fpour consulter les §brègles du jeu§f."
+  voted-to: "§fVous avez voté pour §b%target_player%§f."
+  leave-messages: "§b%player_name% §fa quitté la partie."
+  join-message: "§b%player_name% §fa rejoint la partie."
+  not-aiming-anyone: "§cVous ne viser aucun joueur ! Faites un clic droit sur un joueur pour le viser."
+  chat-format: "§f%player_name% §8§l» §7§f%message%"
+  starting-stopped: "§cLe démarrage de la partie a été annulé."
+  start-message: "§fLa partie commence dans §b10 secondes§f !"
+  starting-in: "§fLa partie commence dans §b%seconds% secondes§f !"
+  game-start: "§fLa partie §c§lCOMMENCE§f !"
+
+  turn-announce: "§fC'est au tour de §b%player_name%§f de jouer !"
+  speaking-time-exceeded: "§b%player_name% §ca dépassé son temps de parole !"
+  voting-phase-started: "§fLa phase de vote §bcommence§f !"
+  voting-for: "§fVous votez pour §b%target_player%§f."
+  player-eliminated: "§f%player_name% §c§lÉLIMINÉ§f ! Il a reçu %votes% vote(s) contre lui. Il était %role%."
+
+  civils-win: "§fVictoire des §bCivils§f !"
+  undercover-win: "§fVictoire des §cUndercover§f !"
+  white-win: "§fVictoire de.s Mr.White§f !"
+
+  skip-item-name: "§b§lTerminé"
+  config-item-name: "§b§lConfiguration"
+
+  guis:
+    config-gui:
+      name: "§bConfiguration"

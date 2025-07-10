@@ -1,57 +1,59 @@
 package fr.thipow.undercover.game;
 
 import fr.thipow.undercover.Undercover;
+import fr.thipow.undercover.utils.GameUtils;
+import java.time.Duration;
+import java.util.Objects;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
+/**
+ * Task responsible for the countdown before the game starts.
+ */
 public class StartingTask extends BukkitRunnable {
 
     private static StartingTask instance;
-    private static boolean started = false;
-    private int countdown = 10;
+    private static boolean      started   = false;
+    private        int          countdown = 10;
 
-    private StartingTask() {}
-
-    @Override
-    public void run() {
-        if (countdown > 0) {
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                player.sendTitle("§bDébut dans §f" + countdown + " §bsecondes", "", 0, 20, 10);
-                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1f);
-            }
-            countdown--;
-        } else {
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                player.sendTitle("§aC'est parti !", "", 0, 40, 10);
-                player.playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f);
-            }
-
-            Undercover.getInstance().getGameManager().startGame();
-            cancelTask();
+    /**
+     * Starts the countdown task if not already started.
+     *
+     * @param plugin the Undercover plugin instance.
+     */
+    public static void start(Undercover plugin) {
+        if (started) {
+            return;
         }
+        instance = new StartingTask();
+        instance.runTaskTimer(plugin, 0L, 20L);
+        started = true;
+        Bukkit.broadcast(
+            GameUtils.legacy(Objects.requireNonNull(plugin.getConfig().getString("messages.start-message"))));
     }
 
+    /**
+     * Toggles the starting task on or off.
+     *
+     * @param plugin the Undercover plugin instance.
+     */
     public static void toggle(Undercover plugin) {
         if (isStarted()) {
             cancelTask();
-            Bukkit.broadcastMessage("§cLancement annulé !");
+            Bukkit.broadcast(
+                GameUtils.legacy(Objects.requireNonNull(plugin.getConfig().getString("messages.starting-stopped"))));
         } else {
             start(plugin);
         }
     }
 
-    public static void start(Undercover plugin) {
-        if (started) return;
-
-        instance = new StartingTask();
-        instance.runTaskTimer(plugin, 0L, 20L); // toutes les secondes
-        started = true;
-
-        Bukkit.broadcastMessage("§aLancement de la partie dans 10 secondes !");
-    }
-
+    /**
+     * Cancels the countdown task if running.
+     */
     public static void cancelTask() {
         if (instance != null) {
             instance.cancel();
@@ -60,7 +62,53 @@ public class StartingTask extends BukkitRunnable {
         started = false;
     }
 
+    /**
+     * Checks if the starting task is currently running.
+     *
+     * @return true if the task is started, false otherwise.
+     */
     public static boolean isStarted() {
         return started;
+    }
+
+    @Override
+    public void run() {
+        if (countdown > 0) {
+            String title = "§bDébut dans §f" + countdown + "§b secondes";
+            broadcastTitleAndSound(title, "", Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1f, 0, 20, 10);
+            countdown--;
+        } else {
+            broadcastTitleAndSound("§aC'est parti !", "", Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f, 0, 20, 10);
+            Undercover.getInstance().getGameManager().startGame();
+            cancelTask();
+        }
+    }
+
+    /**
+     * Sends a title and sound to all online players.
+     *
+     * @param title
+     * @param subtitle
+     * @param sound
+     * @param volume
+     * @param pitch
+     * @param fadInTicks
+     * @param stayTicks
+     * @param fadeOutTicks
+     */
+    private void broadcastTitleAndSound(String title, String subtitle, Sound sound, float volume, float pitch,
+                                        int fadInTicks, int stayTicks, int fadeOutTicks) {
+        Title.Times times = Title.Times.times(Duration.ofMillis(fadInTicks * 50L), Duration.ofMillis(stayTicks * 50L),
+            Duration.ofMillis(fadeOutTicks * 50L));
+
+        Component titleComponent = Component.text(title);
+        Component subtitleComponent = Component.text(subtitle);
+
+        Title titlePacket = Title.title((titleComponent), (subtitleComponent), times);
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.showTitle(titlePacket);
+            player.playSound(player.getLocation(), sound, volume, pitch);
+        }
     }
 }

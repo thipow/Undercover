@@ -1,30 +1,43 @@
 package fr.thipow.undercover.game;
 
 /**
- * Enum representing the different states of the game. Each state has a name that can be retrieved.
+ * Represents the different states of the Undercover game.
+ * Each state has a display name used in messages and interfaces.
+ * @author Thipow
  */
-
 public enum EStates {
 
-    WAITING("En attente..."), PLAYING("Partie en cours"), ENDING("Fin du jeu");
+    WAITING("En attente..."),
+    PLAYING("Partie en cours"),
+    ENDING("Fin du jeu");
 
-    private final String stateName;
+    private final String displayName;
 
     /**
-     * Constructor for the EStates enum.
+     * Constructs a new game state with the given display name.
      *
-     * @param stateName The name of the state.
+     * @param displayName The name displayed for this state.
      */
-    EStates(String stateName) {
-        this.stateName = stateName;
+    EStates(String displayName) {
+        this.displayName = displayName;
     }
 
     /**
-     * Gets the name of the state.
+     * Returns the display name of the game state.
      *
-     * @return The name of the state.
+     * @return Display name.
      */
-    public String getStateName() {
-        return stateName;
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    /**
+     * Returns the display name as the string representation.
+     *
+     * @return Display name.
+     */
+    @Override
+    public String toString() {
+        return displayName;
     }
 }

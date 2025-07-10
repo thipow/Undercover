@@ -1,7 +1,6 @@
 package fr.thipow.undercover.commands;
 
 import fr.thipow.undercover.Undercover;
-import fr.thipow.undercover.game.GameManager;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
