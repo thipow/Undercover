@@ -72,6 +72,10 @@ public class GamePlayer {
         return isEliminated;
     }
 
+    public void setEliminated(boolean isEliminated) {
+        this.isEliminated = isEliminated;
+    }
+
 
     /**
      * Marks this GamePlayer as eliminated, clearing their inventory, allowing flight, and teleporting them to the
@@ -95,6 +99,8 @@ public class GamePlayer {
     public GamePlayer getVotedFor() {
         return votedFor;
     }
+
+
 
     /**
      * Sets the player this GamePlayer voted for.

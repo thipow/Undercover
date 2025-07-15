@@ -208,6 +208,13 @@ public class GameManager {
     public void resetGame() {
         logger.info("Resetting game...");
 
+        for(Player player : Bukkit.getOnlinePlayers()) {
+            if(playerManager.getGamePlayer(player) == null) {
+                GamePlayer gamePlayer = new GamePlayer(player);
+                playerManager.addPlayer(gamePlayer);
+            }
+        }
+
         playerManager.resetAll();
         turnManager.reset();
         wordManager.reset();

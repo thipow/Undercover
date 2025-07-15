@@ -57,10 +57,8 @@ public class PlayerListeners implements Listener {
 
         EStates gameState = main.getGameManager().getGameState();
 
-        GamePlayer gamePlayer = main.getGameManager().getPlayerManager().getGamePlayer(player);
-
-        if (gamePlayer == null) {
-            gamePlayer = new GamePlayer(player);
+        if (main.getGameManager().getPlayerManager().getGamePlayer(player) == null) {
+            GamePlayer gamePlayer = new GamePlayer(player);
 
             if (gameState == EStates.WAITING) {
                 setupWaitingPlayer(gamePlayer);
@@ -72,6 +70,7 @@ public class PlayerListeners implements Listener {
                 gamePlayer.eliminate();
             }
         } else {
+            GamePlayer gamePlayer = main.getGameManager().getPlayerManager().getGamePlayer(player);
             gamePlayer.reset();
             if (gameState == EStates.PLAYING) {
                 if (!gamePlayer.isEliminated()) {
@@ -105,6 +104,7 @@ public class PlayerListeners implements Listener {
         for (String msg : config.getStringList("messages.join-messages")) {
             player.sendMessage(msg.replace("%player_name%", player.getName()));
         }
+        event.joinMessage(null);
     }
 
     /**
@@ -121,6 +121,8 @@ public class PlayerListeners implements Listener {
      * teleported to the map center.
      */
     private void setupSpectatorPlayer(GamePlayer gamePlayer) {
+        main.getGameManager().getPlayerManager().addPlayer(gamePlayer);
+        gamePlayer.setEliminated(true);
         Player player = gamePlayer.getPlayer();
         player.teleport(GameSettings.getCurrentMap().getCenter());
         player.getInventory().clear();
@@ -287,18 +289,10 @@ public class PlayerListeners implements Listener {
 
         if (gameState == EStates.PLAYING) {
             if (!gamePlayer.isEliminated()) {
+                Undercover.getInstance().getGameManager().getTurnManager().cancelTurn();
                 gamePlayer.eliminate();
                 Bukkit.broadcast(GameUtils.legacy("§c" + player.getName() + " a quitté la partie et a été éliminé !"));
-
                 main.getGameManager().getVotingManager().checkVictoryConditions();
-
-                TurnManager turnManager = main.getGameManager().getTurnManager();
-                if (turnManager.getCurrentPlayer() != null && turnManager.getCurrentPlayer().equals(gamePlayer)) {
-                    Bukkit.broadcast(
-                        GameUtils.legacy("§c" + player.getName() + " était le joueur en cours, on passe au suivant !"));
-                    turnManager.updateCurrentIndex();
-                    turnManager.nextTurn();
-                }
             }
 
         } else {

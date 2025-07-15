@@ -55,6 +55,20 @@ public class TurnManager {
         speakingTimeoutTaskId = -1;
     }
 
+    public void cancelTurn(){
+        if (speakingBarTaskId != -1) {
+            Bukkit.getScheduler().cancelTask(speakingBarTaskId);
+            speakingBarTaskId = -1;
+        }
+
+        if (speakingTimeoutTaskId != -1) {
+            Bukkit.getScheduler().cancelTask(speakingTimeoutTaskId);
+            speakingTimeoutTaskId = -1;
+        }
+
+        currentIndex = -1;
+    }
+
 
     /**
      * Passe au joueur suivant encore en vie.
