@@ -2,502 +2,301 @@ package fr.thipow.undercover.game;
 
 
 import fr.thipow.undercover.Undercover;
-import fr.thipow.undercover.managers.ScoreboardManager;
+import fr.thipow.undercover.game.managers.PlayerManager;
+import fr.thipow.undercover.game.managers.RoleManager;
+import fr.thipow.undercover.game.managers.TurnManager;
+import fr.thipow.undercover.game.managers.VotingManager;
+import fr.thipow.undercover.game.managers.WordManager;
+import fr.thipow.undercover.utils.GameUtils;
+import fr.thipow.undercover.utils.GlowUtils;
 import fr.thipow.undercover.utils.ItemBuilder;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
+import java.util.logging.Logger;
 import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.ArmorStand;
-import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
+import org.jetbrains.annotations.NotNull;
+
+/**
+ * Handles the full lifecycle of an Undercover game: setup, start, finish, and reset operations.
+ *
+ * @author Thipow
+ */
 
 public class GameManager {
 
-    private static final FileConfiguration       config             = Undercover.getInstance().getConfig();
-    private static final Map<Player, ArmorStand> voteHolograms      = new HashMap<>();
-    public static        int                     currentPlayerIndex = 0;
-    public static        ERoles                  winners            = ERoles.CIVIL;
-    private static       ArrayList<Player>       gamePlayers        = new ArrayList<>();
-    private static       boolean                 inVotingPhase      = false;
-    private static       Map<Player, Player>     votes              = new HashMap<>();
-    private static       Map<Player, ERoles>     playerRoles        = new HashMap<>();
-    private static       int                     speakingBarTaskId  = -1;
-    private              EStates                 gameState          = EStates.WAITING;
-    private        Undercover main;
-    private static String[]   words = generateWords();
+    private static final @NotNull FileConfiguration config = Undercover.getInstance().getConfig();
+    private static final          Logger            logger = Undercover.getInstance().getLogger();
 
+    private final @NotNull Undercover main;
 
-    public GameManager(Undercover main) {
+    private final @NotNull PlayerManager playerManager;
+    private final @NotNull RoleManager   roleManager;
+    private final @NotNull VotingManager votingManager;
+    private final @NotNull TurnManager   turnManager;
+    private final @NotNull WordManager   wordManager;
+    private                boolean       gameFinished = false;
+
+    private @NotNull EStates gameState = EStates.WAITING;
+    private @NotNull ERoles  winners   = ERoles.CIVIL;
+
+    /**
+     * Constructs a GameManager with all required managers.
+     *
+     * @param main Plugin main instance, must not be null.
+     */
+    public GameManager(@NotNull Undercover main) {
         this.main = main;
+        this.playerManager = new PlayerManager();
+        this.roleManager = new RoleManager();
+        this.votingManager = new VotingManager(this);
+        this.turnManager = new TurnManager(this);
+        this.wordManager = new WordManager();
     }
 
-    public static void resetGame(){
-        GameSettings.setShowUndercoverNames(config.getBoolean("default-setting.showUndercoverNames"));
-        GameSettings.setWhiteEnabled(config.getBoolean("default-setting.whiteEnabled"));
-        GameSettings.setMaxPlayers(config.getInt("default-settings.slots"));
-        GameSettings.setUndercoverCount(config.getInt("default-settings.undercoverCount"));
-        GameSettings.setWhiteCount(config.getInt("default-settings.whiteCount"));
-        GameSettings.setPrivateVote(false);
-        GameSettings.setShowRole(false);
-        currentPlayerIndex = 0;
-        inVotingPhase = false;
-        gamePlayers.clear();
-        votes.clear();
-        playerRoles.clear();
-        speakingBarTaskId = -1;
-        for (ArmorStand hologram : voteHolograms.values()) {
-            if (hologram != null && !hologram.isDead()) {
-                hologram.remove();
-            }
-        }
-        voteHolograms.clear();
-        Undercover.getInstance().getGameManager().setGameState(EStates.WAITING);
-        words = generateWords();
-        for(Player player : Bukkit.getOnlinePlayers()){
-            gamePlayers.add(player);
-            player.stopAllSounds();
-
-            player.playSound(new Location(Bukkit.getWorld("world"), 0.5, 69, 0.5), Sound.MUSIC_DISC_OTHERSIDE, 0.15f, 1);
-            for (PotionEffect effect : player.getActivePotionEffects()) {
-                player.removePotionEffect(effect.getType());
-            }
-            player.setLevel(0);
-            player.setExp(0f);
-            player.setAllowFlight(false);
-            player.setGameMode(GameMode.SURVIVAL);
-            player.getInventory().clear();
-
-            if (player.isOp()) {
-                player.getInventory().setItem(4,
-                    new ItemBuilder(Material.NETHER_STAR).setName(config.getString("messages.config-item-name"))
-                        .toItemStack());
-            }
-        }
+    public boolean isGameFinished() {
+        return gameFinished;
     }
 
-    public static void startRound() {
-        currentPlayerIndex = 0;
-        inVotingPhase = false;
-        nextTurn();
+    public @NotNull PlayerManager getPlayerManager() {
+        return playerManager;
     }
 
-    public static boolean isInVotingPhase() {
-        return inVotingPhase;
+    public @NotNull RoleManager getRoleManager() {
+        return roleManager;
     }
 
-    public static void nextTurn() {
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            p.stopAllSounds();
-        }
-        if (speakingBarTaskId != -1) {
-            Bukkit.getScheduler().cancelTask(speakingBarTaskId);
-            speakingBarTaskId = -1;
-        }
-
-        if (currentPlayerIndex >= gamePlayers.size()) {
-            startVotingPhase();
-            return;
-        }
-
-        Player current = gamePlayers.get(currentPlayerIndex);
-        Bukkit.broadcastMessage(Objects.requireNonNull(config.getString("messages.turn-announce"))
-            .replace("%player_name%", current.getName()));
-        giveSkipItem(current);
-
-        int totalTime = 20;
-
-        speakingBarTaskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(Undercover.getInstance(), new Runnable() {
-            int timeLeft = totalTime;
-
-            @Override
-            public void run() {
-                if (timeLeft <= 0 || getCurrentPlayer() != current) {
-                    for (Player player : Bukkit.getOnlinePlayers()) {
-                        player.setLevel(0);
-                        player.setExp(0f);
-                    }
-                    Bukkit.getScheduler().cancelTask(speakingBarTaskId);
-                    speakingBarTaskId = -1;
-                    return;
-                }
-
-                float xpProgress = timeLeft / (float) totalTime;
-                for (Player player : Bukkit.getOnlinePlayers()) {
-                    player.setLevel(timeLeft);
-                    player.setExp(xpProgress);
-                }
-
-                timeLeft--;
-            }
-        }, 0L, 20L);
-
-        Bukkit.getScheduler().runTaskLater(Undercover.getInstance(), () -> {
-            if (getCurrentPlayer() == current) {
-                Bukkit.broadcastMessage(Objects.requireNonNull(config.getString("messages.speaking-time-exceeded"))
-                    .replace("%player_name%", current.getName()));
-                current.getInventory().clear();
-                currentPlayerIndex++;
-                nextTurn();
-            }
-        }, totalTime * 20L);
+    public @NotNull VotingManager getVotingManager() {
+        return votingManager;
     }
 
-
-    private static void updateVoteHolograms() {
-        for (Player target : gamePlayers) {
-            int voteCount = (int) votes.values().stream().filter(p -> p.equals(target)).count();
-
-            ArmorStand hologram = voteHolograms.get(target);
-
-            if (voteCount == 0) {
-                if (hologram != null && !hologram.isDead()) {
-                    hologram.remove();
-                    voteHolograms.remove(target);
-                }
-                continue;
-            }
-
-            if (hologram == null || hologram.isDead()) {
-                hologram = (ArmorStand) target.getWorld()
-                    .spawnEntity(target.getLocation().add(0, 2.5, 0), EntityType.ARMOR_STAND);
-                hologram.setInvisible(true);
-                hologram.setCustomNameVisible(true);
-                hologram.setMarker(true);
-                hologram.setGravity(false);
-                voteHolograms.put(target, hologram);
-            }
-
-            hologram.teleport(target.getLocation().add(0, 2.25, 0));
-            hologram.setCustomName("§bVotes: §f" + voteCount);
-        }
+    public @NotNull TurnManager getTurnManager() {
+        return turnManager;
     }
 
-
-    public static void teleportPlayers() {
-        List<Location> spawns = new ArrayList<>();
-        spawns.add(new Location(Bukkit.getWorld("world"), 10.5, 69.5, 0.5f, 90, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), 10.5, 69.5, -2.5f, 75, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), 9.5, 69.5, -6f, 55, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), 6.5, 69.5, -8.5f, 35, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), 3.5, 69.5, -9.5f, 15, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), 0.5, 69.5, -9.5f, 0, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), -2.5f, 69.5, -9.5f, -15, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), -5.5f, 69.5, -8.5f, -35, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), -8.5f, 69.5, -5.5f, -55, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), -9.5f, 69.5, -2.5f, -70, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), -9.5f, 69.5, 0.5f, -90, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), -9.5f, 69.5, 3.5f, -105, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), -8.5f, 69.5, 6.5f, -125, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), -5.5f, 69.5, 9.5f, -145, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), -2.5f, 69.5, 10.5f, -165, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), 0.5f, 69.5, 10.5f, 180, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), 3.5f, 69.5, 10.5f, 165, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), 6.5f, 69.5, 9.5f, 145, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), 9.5f, 69.5, 6.5f, 125, 0));
-        spawns.add(new Location(Bukkit.getWorld("world"), 10.5f, 69.5, 3.5f, 105, 0));
-
-        int numberOfPlayers = gamePlayers.size();
-        int totalSpawns = spawns.size();
-
-        if (numberOfPlayers > totalSpawns) {
-            Bukkit.broadcastMessage("§cErreur : Pas assez de positions disponibles pour tous les joueurs !");
-            return;
-        }
-
-        for (int i = 0; i < numberOfPlayers; i++) {
-            int index = (i * totalSpawns) / numberOfPlayers;
-            Player player = gamePlayers.get(i);
-            Location spawn = spawns.get(index);
-            player.teleport(spawn);
-        }
+    public @NotNull WordManager getWordManager() {
+        return wordManager;
     }
 
-
-    public static void startVotingPhase() {
-        inVotingPhase = true;
-        Bukkit.broadcastMessage(config.getString("messages.voting-phase-started"));
-        votes.clear();
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            player.setLevel(0);
-            player.setExp(0f);
-            player.playSound(new Location(Bukkit.getWorld("world"), 0.5, 69, 0.5), Sound.MUSIC_DISC_CREATOR, 0.15f, 1f);
-        }
+    public @NotNull EStates getGameState() {
+        return gameState;
     }
 
-    public static void vote(Player voter, Player target) {
-        if (!Undercover.getInstance().getGameManager().isGameState(EStates.PLAYING)) {
-            return;
-        }
-        if (!inVotingPhase) {
-            return;
-        }
-
-        votes.put(voter, target);
-        voter.sendMessage(Objects.requireNonNull(config.getString("messages.voting-for"))
-            .replace("%target_player%", target.getName()));
-        if (!GameSettings.isPrivateVote()) {
-            Bukkit.broadcastMessage("§b" + voter.getName() + " §fa voté pour §b" + target.getName() + "§f!");
-            updateVoteHolograms();
-        }
-
-        if (votes.size() >= gamePlayers.size()) {
-            endVotingPhase();
-        }
+    /**
+     * Updates the game state.
+     *
+     * @param newState New state, must not be null.
+     */
+    public void setGameState(@NotNull EStates newState) {
+        this.gameState = newState;
+        logger.info("Game state changed to: " + newState);
     }
 
-    public static void endVotingPhase() {
-        Map<Player, Integer> voteCount = new HashMap<>();
-        for (Player voted : votes.values()) {
-            voteCount.put(voted, voteCount.getOrDefault(voted, 0) + 1);
-        }
-
-        Player eliminatedPlayer = null;
-        int maxVotes = 0;
-        for (Map.Entry<Player, Integer> entry : voteCount.entrySet()) {
-            if (entry.getValue() > maxVotes) {
-                eliminatedPlayer = entry.getKey();
-                maxVotes = entry.getValue();
-            }
-        }
-        if (eliminatedPlayer != null) {
-            Bukkit.broadcastMessage(Objects.requireNonNull(config.getString("messages.player-eliminated"))
-                .replace("%player_name%", eliminatedPlayer.getName()).replace("%votes%", String.valueOf(maxVotes))
-                .replace("%role%",
-                    playerRoles.get(eliminatedPlayer).getColor() + playerRoles.get(eliminatedPlayer).getName()));
-            Objects.requireNonNull(Bukkit.getWorld(eliminatedPlayer.getWorld().getName()))
-                .strikeLightning(eliminatedPlayer.getLocation());
-            gamePlayers.remove(eliminatedPlayer);
-            eliminatedPlayer.getInventory().clear();
-            eliminatedPlayer.setAllowFlight(true);
-            eliminatedPlayer.setFlying(true);
-            eliminatedPlayer.teleport(new Location(Bukkit.getWorld("world"), 0.5, 75, 0.5, -90, 0));
-            eliminatedPlayer.addPotionEffect(
-                new PotionEffect(PotionEffectType.INVISIBILITY, 999999, 255, false, false));
-
-            for (ArmorStand hologram : voteHolograms.values()) {
-                if (hologram != null && !hologram.isDead()) {
-                    hologram.remove();
-                }
-            }
-            voteHolograms.clear();
-        }
-        checkVictoryConditions();
+    public @NotNull ERoles getWinners() {
+        return winners;
     }
 
-    public static void checkVictoryConditions() {
-        long undercoverLeft = gamePlayers.stream().filter(p -> playerRoles.get(p) == ERoles.UNDERCOVER).count();
-        long civilLeft = gamePlayers.stream().filter(p -> playerRoles.get(p) == ERoles.CIVIL).count();
-        long whiteLeft = gamePlayers.stream().filter(p -> playerRoles.get(p) == ERoles.MR_WHITE).count();
-
-        if (undercoverLeft == 0) {
-            Bukkit.broadcastMessage(Objects.requireNonNull(config.getString("messages.civils-win")));
-            winners = ERoles.CIVIL;
-            finishGame();
-        } else if (undercoverLeft >= civilLeft) {
-            finishGame();
-            Bukkit.broadcastMessage(Objects.requireNonNull(config.getString("messages.undercover-win")));
-            winners = ERoles.UNDERCOVER;
-        } else {
-            winners = ERoles.MR_WHITE;
-            Bukkit.broadcastMessage("§bLa partie continue, reprise dans 5 secondes...");
-            Bukkit.getScheduler().runTaskLater(Undercover.getInstance(), () -> {
-                startRound();
-            }, 5 * 20L);
-
-        }
+    /**
+     * Sets the winning role/team for this round.
+     *
+     * @param winners Winning role, must not be null.
+     */
+    public void setWinners(@NotNull ERoles winners) {
+        this.winners = winners;
+        logger.info("Winning team set to: " + winners.getName());
     }
 
-
-    public static void finishGame() {
-        Undercover.getInstance().getGameManager().setGameState(EStates.ENDING);
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if(player.isOp()){
-                player.getInventory().clear();
-                player.getInventory().setItem(0, new ItemBuilder(Material.LEAD).setName("§bNouvelle partie").toItemStack());
-            }
-            for (PotionEffect effect : player.getActivePotionEffects()) {
-                player.removePotionEffect(effect.getType());
-            }
-            player.setAllowFlight(true);
-
-            if (playerRoles.get(player) == ERoles.UNDERCOVER && winners == ERoles.UNDERCOVER) {
-                player.sendTitle("§a§lVICTOIRE", "§fVous avez gagné en tant qu'§cUndercover !", 20, 100, 20);
-            } else if (playerRoles.get(player) == ERoles.CIVIL && winners == ERoles.CIVIL) {
-                player.sendTitle("§a§lVICTOIRE", "§fVous avez gagné en tant que §bCivil !", 20, 100, 20);
-            } else if (playerRoles.get(player) == ERoles.MR_WHITE && winners == ERoles.MR_WHITE) {
-                player.sendTitle("§a§lVICTOIRE", "§fVous avez gagné en tant que §fWhite !", 20, 100, 20);
-            } else {
-                player.sendTitle("§c§lDÉFAITE", "§fVous avez perdu !", 20, 100, 20);
-            }
-
-            player.sendMessage("\n"
-                + "§fVous etiez " + playerRoles.get(player).getColor() + playerRoles.get(player).getName() + "§f !\n"
-                + " \n"
-                + "§fLe mot des §cUndercover §fétait : §3" + Undercover.getInstance().getGameManager().getWords()[0] + "§f !\n"
-                + "§fLe mot des §bCivils §fétait : §3" + Undercover.getInstance().getGameManager().getWords()[1] + "§f !\n");
-        }
-    }
-
-    public static void giveSkipItem(Player player) {
-        player.getInventory().setItem(0,
-            new ItemBuilder(Material.FEATHER).setName(config.getString("messages.skip-item.name")).toItemStack());
-    }
-
-    public static Player getCurrentPlayer() {
-        if (gamePlayers.isEmpty() || currentPlayerIndex >= gamePlayers.size()) {
-            return null;
-        }
-        return gamePlayers.get(currentPlayerIndex);
-    }
-
-    public String[] getWords() {
-        return words;
-    }
-
-    private static String[] generateWords() {
-        EWords[] allPairs = EWords.values();
-        EWords pair = allPairs[(int) (Math.random() * allPairs.length)];
-        return new String[]{pair.getWord1(), pair.getWord2()};
-    }
-
+    /**
+     * Initialize a new game: clears state and resets world time.
+     */
     public void initGame() {
-        gameState = EStates.WAITING;
-        gamePlayers.clear();
-        playerRoles.clear();
+        setGameState(EStates.WAITING);
+        GameUtils.smoothTimeTransition(Objects.requireNonNull(Bukkit.getWorld("world")), 4000);
+        playerManager.clear();
+        logger.info("Game initialized.");
     }
 
-    public void distributeRoles() {
-        Collections.shuffle(gamePlayers);
-        Collections.shuffle(gamePlayers);
-        Collections.shuffle(gamePlayers);
-        Collections.shuffle(gamePlayers);
-        Collections.shuffle(gamePlayers);
-        Collections.shuffle(gamePlayers);
-        Collections.shuffle(gamePlayers);
-        for (Player player : gamePlayers) {
-            if (playerRoles.get(player) == null) {
-                if (GameSettings.getUndercoverCount() > 0) {
-                    playerRoles.put(player, ERoles.UNDERCOVER);
-                    GameSettings.setUndercoverCount(GameSettings.getUndercoverCount() - 1);
-                } else if (GameSettings.isWhiteEnabled() && GameSettings.getWhiteCount() > 0) {
-                    playerRoles.put(player, ERoles.MR_WHITE);
-                    GameSettings.setWhiteCount(GameSettings.getWhiteCount() - 1);
-                } else {
-                    playerRoles.put(player, ERoles.CIVIL);
-                }
-            }
-        }
-    }
-
+    /**
+     * Start the game: assign roles, teleport players, give them words.
+     */
     public void startGame() {
-        distributeRoles();
-        teleportPlayers();
-        for (Player player : gamePlayers) {
-            player.getInventory().clear();
-        }
-        setGameState(EStates.PLAYING);
-        for (Player player : gamePlayers) {
-            ERoles role = playerRoles.get(player);
+        logger.info("Starting game...");
+        roleManager.assignRoles(playerManager.getAlivePlayers());
+        turnManager.teleportPlayers();
+        wordManager.assignWords(playerManager.getAlivePlayers());
 
-            String undercoverWord = capitalize(words[0]);
-            String civilWord = capitalize(words[1]);
+        setGameState(EStates.PLAYING);
+        GameUtils.smoothTimeTransition(Objects.requireNonNull(Bukkit.getWorld("world")), 12000);
+
+        for (GamePlayer gp : playerManager.getAlivePlayers()) {
+            Player player = gp.getPlayer();
+            player.getInventory().clear();
+
+            ERoles role = gp.getRole();
+            String ucWord = GameUtils.capitalize(wordManager.getUndercoverWord());
+            String civilWord = GameUtils.capitalize(wordManager.getCivilsWord());
 
             switch (role) {
-                case UNDERCOVER:
-
-                    if (GameSettings.isShowRole()) {
-                        player.sendMessage(
-                            "Tu est " + role.getColor() + role.getName() + " !\n" + "Ton mot est : §3" + undercoverWord
-                                + " !");
-                        player.playSound(player.getLocation(), Sound.ENTITY_WOLF_GROWL, 1, 1);
-                        player.sendTitle(role.getColor() + role.getName(), undercoverWord, 20, 100, 20);
-                    } else {
-                        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1, 1);
-                        player.sendMessage("Ton mot est : §3" + undercoverWord + " !");
-                        player.sendTitle("Ton mot est", "§b" + undercoverWord, 20, 100, 20);
-                    }
-
-                    break;
-                case MR_WHITE:
-                    player.playSound(player.getLocation(), Sound.ITEM_GOAT_HORN_SOUND_3, 1, 1);
-                    player.sendTitle(role.getColor() + role.getName(), "§fVous n'avez pas de mot !", 20, 100, 20);
-                    player.sendMessage("Tu est " + role.getColor() + role.getName() + " !\n"
-                        + "§3Vous n'avez pas de mot, vous devez deviner celui des Undercover !");
-                    break;
-                case CIVIL:
-                    if (GameSettings.isShowRole()) {
-                        player.sendMessage(
-                            "Tu est " + role.getColor() + role.getName() + " !\n" + "Ton mot est : §3" + civilWord
-                                + " !");
-                        player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1, 1);
-                        player.sendTitle(role.getColor() + role.getName(), civilWord, 20, 100, 20);
-                    } else {
-                        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1, 1);
-                        player.sendMessage("Ton mot est : §3" + civilWord + " !");
-                        player.sendTitle("Ton mot est", "§b" + civilWord, 20, 100, 20);
-                    }
+                case UNDERCOVER -> sendUndercoverMessage(player, ucWord);
+                case MR_WHITE -> sendWhiteMessage(player);
+                case CIVIL -> sendCivilMessage(player, civilWord);
             }
         }
 
         if (GameSettings.isShowUndercoverNames()) {
-            for (Player player : gamePlayers) {
-                List<Player> undercoverPlayers = gamePlayers.stream()
-                    .filter(p -> playerRoles.get(p) == ERoles.UNDERCOVER).toList();
-                if (Undercover.getInstance().getGameManager().getPlayerRole(player) == ERoles.UNDERCOVER) {
-                    player.sendMessage("§cVoici la liste de vos associés Undercover :");
-                    for (Player undercover : undercoverPlayers) {
-                        if (!undercover.equals(player)) {
-                            player.sendMessage("§f- §3" + undercover.getName());
-                        }
-                    }
-                }
-            }
+            revealUndercoverTeammates();
         }
 
         Bukkit.getScheduler().runTaskLater(main, () -> {
-            startRound();
-        }, 20L);
+            List<GamePlayer> shuffledPlayers = new ArrayList<>(playerManager.getAlivePlayers());
+            Collections.shuffle(shuffledPlayers);
+            turnManager.startTurns(shuffledPlayers);
+            turnManager.nextTurn();
+        }, 20 * 5);
     }
 
-    private String capitalize(String word) {
-        if (word == null || word.isEmpty()) {
-            return word;
+    /**
+     * Handle game end: show titles, give flight, display roles.
+     */
+    public void finishGame() {
+        GameUtils.clearArmorStands();
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            GlowUtils.resetGlow(player.getPlayer());
         }
-        return word.substring(0, 1).toUpperCase() + word.substring(1);
+        this.gameFinished = true;
+        setGameState(EStates.ENDING);
+        GameUtils.smoothTimeTransition(Objects.requireNonNull(Bukkit.getWorld("world")), 4000);
+
+        for (GamePlayer gp : playerManager.getAllGamePlayers()) {
+            Player pl = gp.getPlayer();
+
+            if (getWinners() == gp.getRole()) {
+                Undercover.getInstance().getStatsManager().addWin(pl.getUniqueId(), gp.getRole().getIdentifier());
+            } else {
+                Undercover.getInstance().getStatsManager().addLoss(pl.getUniqueId());
+            }
+
+            if (pl.isOp()) {
+                pl.getInventory().clear();
+                pl.getInventory().setItem(0, new ItemBuilder(Material.LEAD).setName("§bNouvelle partie").toItemStack());
+            }
+
+            // Remove all potion effects
+            pl.getActivePotionEffects().stream().map(PotionEffect::getType).forEach(pl::removePotionEffect);
+
+            pl.setAllowFlight(true);
+
+            showEndTitle(pl, gp.getRole());
+
+            pl.sendMessage("\n§fTu étais " + gp.getRole().getColor() + gp.getRole().getName() + "§f !");
+            pl.sendMessage("\n§fLe mot des civils était : §3" + wordManager.getCivilsWord() + "§f.");
+            pl.sendMessage("§fLe mot des Undercover était : §3" + wordManager.getUndercoverWord() + "§f.");
+        }
     }
 
-    public ArrayList<Player> getGamePlayers() {
-        return gamePlayers;
+    /**
+     * Reset everything back to default: settings, players, words, holograms.
+     */
+    public void resetGame() {
+        logger.info("Resetting game...");
+
+        playerManager.resetAll();
+        turnManager.reset();
+        wordManager.reset();
+        this.gameFinished = false;
+
+        for (ArmorStand as : votingManager.getVoteHolograms().values()) {
+            as.remove();
+        }
+
+        setGameState(EStates.WAITING);
+        GameUtils.smoothTimeTransition(Objects.requireNonNull(Bukkit.getWorld("world")), 4000);
     }
 
-    public Map<Player, ERoles> getPlayerRoles() {
-        return playerRoles;
+    /**
+     * Sends a message to the player indicating they are the Undercover role and their assigned word.
+     *
+     * @param player The player to send the message to, must not be null.
+     * @param word   The word assigned to the player, must not be null.
+     */
+    private void sendUndercoverMessage(@NotNull Player player, @NotNull String word) {
+        if (GameSettings.isShowRole()) {
+            player.sendMessage(
+                "Tu es " + ERoles.UNDERCOVER.getColor() + ERoles.UNDERCOVER.getName() + "§f !\nTon mot est : §3" + word
+                    + "§f !");
+            player.sendTitle(ERoles.UNDERCOVER.getColor() + ERoles.UNDERCOVER.getName(), word, 20, 100, 20);
+            player.playSound(player.getLocation(), Sound.ENTITY_WOLF_GROWL, 1, 1);
+        } else {
+            player.sendMessage("Ton mot est : §3" + word + "§f !");
+            player.sendTitle("Ton mot", "§b" + word, 20, 100, 20);
+            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1, 1);
+        }
     }
 
-    public ERoles getPlayerRole(Player player) {
-        return playerRoles.getOrDefault(player, ERoles.CIVIL);
+    /**
+     * Sends a message to the player indicating they are the White role and have no word.
+     *
+     * @param player The player to send the message to, must not be null.
+     */
+    private void sendWhiteMessage(@NotNull Player player) {
+        player.sendTitle(ERoles.MR_WHITE.getColor() + ERoles.MR_WHITE.getName(), "§fTu n'as pas de mot !", 20, 100, 20);
+        player.sendMessage("Tu es le Blanc ! À toi de deviner le mot des Undercover.");
+        player.playSound(player.getLocation(), Sound.ITEM_GOAT_HORN_SOUND_3, 1, 1);
     }
 
-    public EStates getGameState() {
-        return gameState;
+    /**
+     * Sends a message to the player indicating their role and word if applicable.
+     * @param player The player to send the message to, must not be null.
+     * @param word  The word assigned to the player, must not be null.
+     */
+    private void sendCivilMessage(@NotNull Player player, @NotNull String word) {
+        if (GameSettings.isShowRole()) {
+            player.sendMessage(
+                "Tu es " + ERoles.CIVIL.getColor() + ERoles.CIVIL.getName() + "§f !\nTon mot est : §3" + word + "§f !");
+            player.sendTitle(ERoles.CIVIL.getColor() + ERoles.CIVIL.getName(), word, 20, 100, 20);
+            player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1, 1);
+        } else {
+            player.sendMessage("Ton mot est : §3" + word + "§f !");
+            player.sendTitle("Ton mot", "§b" + word, 20, 100, 20);
+            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1, 1);
+        }
     }
 
-    public void setGameState(final EStates gameState) {
-        this.gameState = gameState;
+    /**
+     * Displays the end title based on the player's role and whether they won or lost.
+     *
+     * @param player The player to show the title to, must not be null.
+     * @param role   The role of the player, must not be null.
+     */
+    private void showEndTitle(@NotNull Player player, @NotNull ERoles role) {
+        if (role == winners) {
+            player.sendTitle("§a§lVICTOIRE", "§fTu as gagné en tant que " + role.getColor() + role.getName() + "§f !",
+                20, 100, 20);
+        } else {
+            player.sendTitle("§c§lDÉFAITE", "§fTu as perdu...", 20, 100, 20);
+        }
     }
 
-    public boolean isGameState(final EStates state) {
-        return gameState == state;
+    /**
+     * Reveals all undercover teammates to each undercover player. Sends a message with the names of all undercover
+     * teammates.
+     */
+    private void revealUndercoverTeammates() {
+        for (GamePlayer gp : playerManager.getAlivePlayers()) {
+            if (gp.getRole() == ERoles.UNDERCOVER) {
+                Player p = gp.getPlayer();
+                p.sendMessage("§cTes coéquipiers Undercover :");
+                playerManager.getAlivePlayers().stream().filter(teammate -> teammate.getRole() == ERoles.UNDERCOVER)
+                    .forEach(teammate -> p.sendMessage("§f- §3" + teammate.getPlayer().getName()));
+            }
+        }
     }
 }

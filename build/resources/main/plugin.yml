@@ -1,13 +1,20 @@
 name: Undercover
-version: '1.0.1'
+version: '1.0.3'
 main: fr.thipow.undercover.Undercover
 api-version: '1.21'
 author: Thipow
-authors: [ Aximox, Thipow ]
-description: Plugin mini-jeu undercover
+authors: [ Aximox ]
+description: Undercover minigame plugin for Minecraft servers.
+soft-depend: [ 'ProtocolLib']
 
 commands:
     undercover:
         description: Commande principale du plugin Undercover
-        usage: /<command> [args]
+        usage: /uc
+        permission: uc.admin
         aliases: [uc]
+
+permissions:
+    uc.admin:
+        description: Accès admin au plugin Undercover
+        default: op

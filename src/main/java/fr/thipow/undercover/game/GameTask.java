@@ -3,86 +3,105 @@ package fr.thipow.undercover.game;
 import fr.thipow.undercover.Undercover;
 import fr.thipow.undercover.managers.ScoreboardManager;
 import fr.thipow.undercover.utils.GameUtils;
+import fr.thipow.undercover.utils.ItemBuilder;
+import java.util.Arrays;
+import java.util.List;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
-import org.bukkit.World;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
 
 /**
  * Game loop task updating game time, scoreboards and sending role words to players.
+ *
  * @author Thipow
  */
 public class GameTask extends BukkitRunnable {
 
     private final Undercover main;
-    private Long lastTargetTime = null;
+
+    private final List<String> waitingMessages = Arrays.asList("§eEn attente de joueurs...",
+        "§aUtilise /uc music pour désactiver la musique !", "§bInvite tes amis à rejoindre !",
+        "§dLa partie va bientôt commencer...");
+
+    private int messageIndex = 0;
+    private int tickCounter  = 0;
 
     public GameTask(Undercover main) {
         this.main = main;
     }
 
+    /**
+     * Starts the game task.
+     */
     @Override
     public void run() {
-        World world = Bukkit.getWorld("world");
-        if (world == null) return;
-
-        GameManager gameManager = main.getGameManager();
-        EStates currentState = gameManager.getGameState();
-
-        long targetTime = switch (currentState) {
-            case WAITING, ENDING -> 4000;
-            case PLAYING -> {
-                updateActionBars(gameManager);
-                yield GameManager.isInVotingPhase() ? 16000 : 12000;
-            }
-        };
-
-        if (lastTargetTime == null || !lastTargetTime.equals(targetTime)) {
-            smoothTimeTransition(world, targetTime);
-            lastTargetTime = targetTime;
-        }
-
+        // Update scoreboard
         Bukkit.getOnlinePlayers().forEach(ScoreboardManager::updateScoreboard);
-    }
 
-    private void updateActionBars(GameManager gameManager) {
-        for (Player player : gameManager.getGamePlayers()) {
-            ERoles role = gameManager.getPlayerRole(player);
-            String[] words = gameManager.getWords();
-            String word = switch (role) {
-                case UNDERCOVER -> words[0];
-                case CIVIL -> words[1];
-                case MR_WHITE -> "Devine le mot !";
-            };
+        // Update action bars
+        updateActionBars();
 
-            player.sendActionBar(GameUtils.legacy("§bMot : §f" + capitalize(word)));
+        // Update tablist header/footer and give items
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            giveItems(p);
+
+            Component header = Component.text("Undercover", NamedTextColor.AQUA)
+                .append(Component.text(" | ", NamedTextColor.DARK_GRAY))
+                .append(Component.text("Mini-jeu social", NamedTextColor.WHITE)).appendNewline();
+
+            Component footer = Component.newline().append(Component.text("Version ", NamedTextColor.GRAY))
+                .append(Component.text(Undercover.getInstance().getPluginMeta().getVersion(), NamedTextColor.GREEN))
+                .append(Component.text(" | ", NamedTextColor.DARK_GRAY))
+                .append(Component.text("Développé par ", NamedTextColor.GRAY))
+                .append(Component.text("Thipow", NamedTextColor.AQUA));
+
+            p.sendPlayerListHeaderAndFooter(header, footer);
         }
     }
 
-    private String capitalize(String word) {
-        return (word == null || word.isEmpty()) ? word :
-            word.substring(0, 1).toUpperCase() + word.substring(1);
+    /**
+     * Gives items to players based on the game state.
+     *
+     * @param player the player to give items to
+     */
+    private void giveItems(Player player) {
+        if (player.isOp() && main.getGameManager().getGameState().equals(EStates.WAITING)) {
+            player.getInventory().setItem(4, new ItemBuilder(Material.NETHER_STAR).setName(
+                Undercover.getInstance().getConfig().getString("messages.config-item-name")).toItemStack());
+        }
+        if (player.isOp() && main.getGameManager().getGameState().equals(EStates.ENDING)) {
+            player.getInventory().setItem(0, new ItemBuilder(Material.LEAD).setName("§bNouvelle partie").toItemStack());
+        }
     }
 
-    private void smoothTimeTransition(World world, long targetTime) {
-        long startTime = world.getTime();
-        long delta = (targetTime - startTime + 24000) % 24000;
-
-        new BukkitRunnable() {
-            int ticks = 0;
-
-            @Override
-            public void run() {
-                ticks++;
-                float progress = ticks / (float) 20;
-                long newTime = (startTime + (long) (delta * progress)) % 24000;
-                world.setTime(newTime);
-
-                if (ticks >= 20) {
-                    cancel();
-                    world.setTime(targetTime);
+    /**
+     * Updates the action bars for all players with their current word or rotates waiting messages if the game is not in
+     * PLAYING state.
+     */
+    private void updateActionBars() {
+        if (main.getGameManager().getGameState().equals(EStates.PLAYING)) {
+            for (GamePlayer gamePlayer : main.getGameManager().getPlayerManager().getAlivePlayers()) {
+                String word = gamePlayer.getWord();
+                if (word.isEmpty()) {
+                    word = "Devine le mot !";
                 }
+                gamePlayer.getPlayer().sendActionBar(GameUtils.legacy("§bMot : §f" + GameUtils.capitalize(word)));
             }
-        }.runTaskTimer(main, 0L, 1L);
+        } else {
+            tickCounter++;
+            if (tickCounter >= 5) {
+                tickCounter = 0;
+                messageIndex = (messageIndex + 1) % waitingMessages.size();
+            }
+
+            String msg = waitingMessages.get(messageIndex);
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                p.sendActionBar(GameUtils.legacy(msg));
+            }
+        }
     }
 }

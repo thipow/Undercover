@@ -13,6 +13,8 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 /**
  * Task responsible for the countdown before the game starts.
+ *
+ * @author Thipow
  */
 public class StartingTask extends BukkitRunnable {
 
@@ -75,40 +77,40 @@ public class StartingTask extends BukkitRunnable {
     public void run() {
         if (countdown > 0) {
             String title = "§bDébut dans §f" + countdown + "§b secondes";
-            broadcastTitleAndSound(title, "", Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1f, 0, 20, 10);
+            broadcastTitleAndSound(title, "", Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1f, 0, 10);
             countdown--;
         } else {
-            broadcastTitleAndSound("§aC'est parti !", "", Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f, 0, 20, 10);
+            broadcastTitleAndSound("§aC'est parti !", "", Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f, 0, 10);
             Undercover.getInstance().getGameManager().startGame();
             cancelTask();
         }
     }
 
     /**
-     * Sends a title and sound to all online players.
+     * Sends a title and a sound to all online players.
      *
-     * @param title
-     * @param subtitle
-     * @param sound
-     * @param volume
-     * @param pitch
-     * @param fadInTicks
-     * @param stayTicks
-     * @param fadeOutTicks
+     * @param title        The main title text displayed.
+     * @param subtitle     The subtitle text displayed under the main title.
+     * @param sound        The sound to play for each player.
+     * @param volume       The volume of the sound (1.0F is default).
+     * @param pitch        The pitch of the sound (1.0F is normal pitch).
+     * @param fadeInTicks  How many ticks the title takes to fade in.
+     * @param fadeOutTicks How many ticks the title takes to fade out.
      */
     private void broadcastTitleAndSound(String title, String subtitle, Sound sound, float volume, float pitch,
-                                        int fadInTicks, int stayTicks, int fadeOutTicks) {
-        Title.Times times = Title.Times.times(Duration.ofMillis(fadInTicks * 50L), Duration.ofMillis(stayTicks * 50L),
+                                        int fadeInTicks, int fadeOutTicks) {
+        Title.Times times = Title.Times.times(Duration.ofMillis(fadeInTicks * 50L), Duration.ofMillis(20 * 50L),
             Duration.ofMillis(fadeOutTicks * 50L));
 
         Component titleComponent = Component.text(title);
         Component subtitleComponent = Component.text(subtitle);
 
-        Title titlePacket = Title.title((titleComponent), (subtitleComponent), times);
+        Title titlePacket = Title.title(titleComponent, subtitleComponent, times);
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             player.showTitle(titlePacket);
             player.playSound(player.getLocation(), sound, volume, pitch);
         }
     }
+
 }

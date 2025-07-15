@@ -2,16 +2,15 @@ package fr.thipow.undercover.listeners;
 
 import fr.thipow.undercover.Undercover;
 import fr.thipow.undercover.game.EStates;
-import fr.thipow.undercover.game.GameManager;
+import fr.thipow.undercover.game.GamePlayer;
 import fr.thipow.undercover.game.GameSettings;
+import fr.thipow.undercover.game.managers.TurnManager;
+import fr.thipow.undercover.game.managers.VotingManager;
 import fr.thipow.undercover.gui.ConfigGUI;
 import fr.thipow.undercover.managers.ScoreboardManager;
 import fr.thipow.undercover.utils.GameUtils;
-import fr.thipow.undercover.utils.ItemBuilder;
 import io.papermc.paper.event.player.PlayerPickItemEvent;
 import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -35,8 +34,8 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
 /**
- * Handles player-related events such as join/quit, item interactions,
- * inventory events, and general restrictions.
+ * Handles player-related events such as join/quit, item interactions, inventory events, and general restrictions.
+ *
  * @author Thipow
  */
 public class PlayerListeners implements Listener {
@@ -45,75 +44,144 @@ public class PlayerListeners implements Listener {
     private final FileConfiguration config = main.getConfig();
 
     /**
-     * Called when a player joins the server.
-     * Initializes player state based on the current game state.
+     * Called when a player joins the server. Initializes player state based on the current game state.
      */
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        if(!(main.getGameManager().isGameState(EStates.PLAYING))){
-            event.joinMessage(GameUtils.legacy("§b" + player.getName() + " §fa rejoint la partie !"));
+
+        if (GameSettings.getCurrentMap() == null) {
+            player.sendMessage("§c§lAUCUNE MAP N'A ÉTÉ CONFIGURER ! UTILISEZ /uc map <tab> POUR EN CONFIGURER UNE !");
+            player.playSound(player.getLocation(), Sound.ENTITY_GHAST_HURT, 1f, 1f);
         }
-        player.playSound(player.getLocation(), Sound.ITEM_GOAT_HORN_SOUND_1, 1, 1);
+
+        EStates gameState = main.getGameManager().getGameState();
+
+        GamePlayer gamePlayer = main.getGameManager().getPlayerManager().getGamePlayer(player);
+
+        if (gamePlayer == null) {
+            gamePlayer = new GamePlayer(player);
+
+            if (gameState == EStates.WAITING) {
+                setupWaitingPlayer(gamePlayer);
+                event.joinMessage(GameUtils.legacy("§b" + player.getName() + " §fa rejoint la partie !"));
+            } else {
+                setupSpectatorPlayer(gamePlayer);
+                event.joinMessage(null);
+
+                gamePlayer.eliminate();
+            }
+        } else {
+            gamePlayer.reset();
+            if (gameState == EStates.PLAYING) {
+                if (!gamePlayer.isEliminated()) {
+                    gamePlayer.eliminate();
+                    Bukkit.broadcast(GameUtils.legacy(
+                        "§c" + player.getName() + " a reconnecté mais a été éliminé car il a quitté la partie !"));
+
+                    main.getGameManager().getVotingManager().checkVictoryConditions();
+
+                    TurnManager turnManager = main.getGameManager().getTurnManager();
+                    if (turnManager.getCurrentPlayer() != null && turnManager.getCurrentPlayer().equals(gamePlayer)) {
+                        Bukkit.broadcast(GameUtils.legacy(
+                            "§c" + player.getName() + " était le joueur en cours, on passe au suivant !"));
+                        turnManager.updateCurrentIndex();
+                        turnManager.nextTurn();
+                    }
+
+                    setupSpectatorPlayer(gamePlayer);
+                } else {
+                    setupSpectatorPlayer(gamePlayer);
+                }
+            } else {
+                gamePlayer.reset();
+                ScoreboardManager.createScoreboard(player);
+                event.joinMessage(GameUtils.legacy("§b" + player.getName() + " §fa rejoint la partie !"));
+            }
+        }
+
+        player.playSound(player.getLocation(), Sound.ITEM_GOAT_HORN_SOUND_1, 1f, 1f);
 
         for (String msg : config.getStringList("messages.join-messages")) {
             player.sendMessage(msg.replace("%player_name%", player.getName()));
-        }
-
-        if (main.getGameManager().isGameState(EStates.WAITING)) {
-            setupWaitingPlayer(player);
-        } else {
-            setupSpectatorPlayer(player);
         }
     }
 
     /**
      * Sets up a player when joining during the WAITING state.
      */
-    private void setupWaitingPlayer(Player player) {
-        Location spawn = new Location(Bukkit.getWorld("world"), -16.5, 69, 0.5, -90, 0);
-        player.teleport(spawn);
-        player.setLevel(0);
-        player.setExp(0f);
-        player.setGameMode(GameMode.SURVIVAL);
-        player.setAllowFlight(false);
-        player.getInventory().clear();
-        player.getActivePotionEffects().forEach(effect -> player.removePotionEffect(effect.getType()));
-        player.playSound(new Location(Bukkit.getWorld("world"), 0, 69, 0), Sound.MUSIC_DISC_OTHERSIDE, 0.15f, 1);
-
-        ScoreboardManager.createScoreboard(player);
-        main.getGameManager().getGamePlayers().add(player);
-
-        if (player.isOp()) {
-            ItemStack configItem = new ItemBuilder(Material.NETHER_STAR)
-                .setName(config.getString("messages.config-item-name"))
-                .toItemStack();
-            player.getInventory().setItem(4, configItem);
-        }
+    private void setupWaitingPlayer(GamePlayer gamePlayer) {
+        gamePlayer.reset();
+        main.getGameManager().getPlayerManager().addPlayer(gamePlayer);
+        ScoreboardManager.createScoreboard(gamePlayer.getPlayer());
     }
 
     /**
-     * Sets up a player as a spectator when the game is running.
+     * Sets up a player when joining during the PLAYING state as a spectator. Spectators are invisible, can fly, and are
+     * teleported to the map center.
      */
-    private void setupSpectatorPlayer(Player player) {
-        Location specLocation = new Location(Bukkit.getWorld("world"), 0.5, 75, 0.5, -90, 0);
-        player.teleport(specLocation);
+    private void setupSpectatorPlayer(GamePlayer gamePlayer) {
+        Player player = gamePlayer.getPlayer();
+        player.teleport(GameSettings.getCurrentMap().getCenter());
         player.getInventory().clear();
         player.setAllowFlight(true);
         player.setFlying(true);
-        player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 1, false, false));
+        player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 255, false, false));
     }
 
-    @EventHandler public void onDamage(EntityDamageEvent event) { event.setCancelled(true); }
-    @EventHandler public void onBlockPlace(BlockPlaceEvent event) { event.setCancelled(true); }
-    @EventHandler public void onBlockBreak(BlockBreakEvent event) { event.setCancelled(true); }
-    @EventHandler public void onItemPickup(PlayerAttemptPickupItemEvent event) { event.setCancelled(true); }
-    @EventHandler public void onPickup(PlayerPickItemEvent event) { event.setCancelled(true); }
-    @EventHandler public void onFoodLevelChange(FoodLevelChangeEvent event) { event.setCancelled(true); }
-    @EventHandler public void onDrop(PlayerDropItemEvent event) { event.setCancelled(true); }
-    @EventHandler public void onHandSwap(PlayerSwapHandItemsEvent event) { event.setCancelled(true); }
-    @EventHandler public void onInventoryDrag(InventoryDragEvent event) { event.setCancelled(true); }
-    @EventHandler public void onInventorySlotChange(InventoryMoveItemEvent event) { event.setCancelled(true); }
+    /**
+     * Event Handlers for various player actions to restrict gameplay during the game. These handlers cancel actions
+     * that would disrupt the game flow.
+     */
+    @EventHandler
+    public void onDamage(EntityDamageEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onBlockPlace(BlockPlaceEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onItemPickup(PlayerAttemptPickupItemEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onPickup(PlayerPickItemEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onDrop(PlayerDropItemEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onHandSwap(PlayerSwapHandItemsEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onInventorySlotChange(InventoryMoveItemEvent event) {
+        event.setCancelled(true);
+    }
 
     /**
      * Handles player item interactions such as GUI opening or skipping turn.
@@ -123,7 +191,9 @@ public class PlayerListeners implements Listener {
         Player player = event.getPlayer();
         ItemStack item = event.getItem();
 
-        if (item == null || item.getType() == Material.AIR) return;
+        if (item == null || item.getType() == Material.AIR) {
+            return;
+        }
 
         Material type = item.getType();
 
@@ -134,20 +204,69 @@ public class PlayerListeners implements Listener {
             }
 
             case FEATHER -> {
-                if (!player.equals(GameManager.getCurrentPlayer())) return;
+                GamePlayer current = Undercover.getInstance().getGameManager().getTurnManager().getCurrentPlayer();
+                if (current == null || !player.equals(current.getPlayer())) {
+                    return;
+                }
+
                 event.setCancelled(true);
                 player.getInventory().clear();
 
-                String msg = config.getString("messages.speaking-time-exceeded");
-                if (msg != null) {
-                    Bukkit.broadcast(GameUtils.legacy(msg.replace("%player_name%", player.getName())));
+                String msg = "§b%player_name% a terminé son tour !";
+                Bukkit.broadcast(GameUtils.legacy(msg.replace("%player_name%", player.getName())));
+
+                TurnManager turnManager = Undercover.getInstance().getGameManager().getTurnManager();
+                Bukkit.getScheduler().cancelTask(turnManager.getSpeakingBarTaskId());
+                Bukkit.getScheduler().cancelTask(turnManager.getSpeakingTimeoutTaskId());
+                turnManager.clearTaskIds();
+
+                turnManager.updateCurrentIndex();
+
+                if (turnManager.getCurrentIndex() >= turnManager.getTurnOrder().size()) {
+                    main.getGameManager().getVotingManager().startVotingPhase();
+                } else {
+                    turnManager.nextTurn();
+                }
+            }
+            case DIAMOND -> {
+                GamePlayer gamePlayer = Undercover.getInstance().getGameManager().getPlayerManager()
+                    .getGamePlayer(player);
+                if (gamePlayer == null) {
+                    return;
                 }
 
-                GameManager.currentPlayerIndex++;
-                GameManager.nextTurn();
+                VotingManager votingManager = Undercover.getInstance().getGameManager().getVotingManager();
+
+                votingManager.playerSkipDiscussion(gamePlayer);
+
+                event.setCancelled(true);
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
             }
 
-            case LEAD -> GameManager.resetGame();
+            case BOOK -> {
+                event.setCancelled(true);
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+                player.sendMessage("§c§lRÈGLES DU JEU\n" +
+                    "\n§r\n" +
+                    "§fChaque joueur reçoit un mot secret.\n" +
+                    "§fMais attention... certains joueurs ont un mot différent :\n" +
+                    "§fIls sont les §c§lUndercover§e.\n" +
+                    "\n§r\n" +
+                    "§fUn joueur n’a §caucun§f mot du tout :\n" +
+                    "§fIl s'agit de §f§lMr. White§f.\n" +
+                    "\n§r\n" +
+                    "§3Votre objectif :\n" +
+                    "§fDéduisez qui ment ou improvise, et éliminez les imposteurs !\n" +
+                    "§7§o(Mais attention à ne pas vous faire démasquer si vous êtes Undercover ou Mr. White...)\n" +
+                    "\n§r\n" +
+                    "§3Déroulement du jeu :\n" +
+                    "§bPhase de discussion :§f Chaque joueur donne un mot en rapport avec son mot secret.\n" +
+                    "§bPhase de vote :§f Les joueurs votent pour éliminer un suspect.\n" +
+                    "\n§r\n" +
+                    "§cEn cas d'égalité, il faudra savoir vous départager...\n");
+            }
+
+            case LEAD -> Undercover.getInstance().getGameManager().resetGame();
         }
     }
 
@@ -157,25 +276,34 @@ public class PlayerListeners implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        if(main.getGameManager().getGamePlayers().contains(player)) {
-            event.quitMessage(GameUtils.legacy("§b" + player.getName() + " §fa quitté la partie !"));
-        }
+        GamePlayer gamePlayer = main.getGameManager().getPlayerManager().getGamePlayer(player);
+        EStates gameState = main.getGameManager().getGameState();
+
         ScoreboardManager.deleteScoreboard(player);
 
-        EStates state = main.getGameManager().getGameState();
-        main.getGameManager().getGamePlayers().remove(player);
+        if (gamePlayer == null) {
+            return;
+        }
 
-        if (state == EStates.PLAYING) {
-            String leaveMsg = config.getString("messages.join-message");
-            if (leaveMsg != null) {
-                Bukkit.broadcast(GameUtils.legacy(GameSettings.getPrefix() + leaveMsg.replace("%player_name%", player.getName())));
+        if (gameState == EStates.PLAYING) {
+            if (!gamePlayer.isEliminated()) {
+                gamePlayer.eliminate();
+                Bukkit.broadcast(GameUtils.legacy("§c" + player.getName() + " a quitté la partie et a été éliminé !"));
+
+                main.getGameManager().getVotingManager().checkVictoryConditions();
+
+                TurnManager turnManager = main.getGameManager().getTurnManager();
+                if (turnManager.getCurrentPlayer() != null && turnManager.getCurrentPlayer().equals(gamePlayer)) {
+                    Bukkit.broadcast(
+                        GameUtils.legacy("§c" + player.getName() + " était le joueur en cours, on passe au suivant !"));
+                    turnManager.updateCurrentIndex();
+                    turnManager.nextTurn();
+                }
             }
 
-            if (player.equals(GameManager.getCurrentPlayer())) {
-                Bukkit.broadcast(GameUtils.legacy("§c" + player.getName() + " était le joueur en cours, on passe au suivant !"));
-                GameManager.currentPlayerIndex++;
-                GameManager.nextTurn();
-            }
+        } else {
+            main.getGameManager().getPlayerManager().removePlayer(player);
+            event.quitMessage(GameUtils.legacy("§b" + player.getName() + " §fa quitté la partie !"));
         }
     }
 }

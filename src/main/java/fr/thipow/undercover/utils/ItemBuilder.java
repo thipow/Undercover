@@ -19,11 +19,11 @@ import org.bukkit.potion.PotionEffect;
 /**
  * Easily create itemstacks, without messing your hands.
  *
- * @author NonameSL / Edited by : ZaDiHo
+ * @author NonameSL / Edited by : Thipow
  */
 public class ItemBuilder {
 
-    private ItemStack is;
+    private final ItemStack is;
 
     /**
      * Create a new ItemBuilder from scratch.
@@ -62,25 +62,6 @@ public class ItemBuilder {
      */
     public ItemBuilder(Material m, int amount, byte durability) {
         is = new ItemStack(m, amount, durability);
-    }
-
-    /**
-     * Clone the ItemBuilder into a new one.
-     *
-     * @return The cloned instance.
-     */
-    public ItemBuilder clone() {
-        return new ItemBuilder(is);
-    }
-
-    /**
-     * Change the durability of the item.
-     *
-     * @param dur The durability to set it to.
-     */
-    public ItemBuilder setDurability(short dur) {
-        is.setDurability(dur);
-        return this;
     }
 
     /**

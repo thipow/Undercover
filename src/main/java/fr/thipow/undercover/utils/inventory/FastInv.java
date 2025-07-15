@@ -24,33 +24,41 @@ package fr.thipow.undercover.utils.inventory;
  * SOFTWARE.
  */
 
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.*;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.InventoryHolder;
-import org.bukkit.inventory.ItemStack;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
+import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.NotNull;
 
 /**
- * Lightweight and easy-to-use inventory API for Bukkit plugins.
- * The project is on <a href="https://github.com/MrMicky-FR/FastInv">GitHub</a>.
+ * Lightweight and easy-to-use inventory API for Bukkit plugins. The project is on <a
+ * href="https://github.com/MrMicky-FR/FastInv">GitHub</a>.
  *
  * @author MrMicky
  * @version 3.1.2
  */
 public class FastInv implements InventoryHolder {
 
-    private final Map<Integer, Consumer<InventoryClickEvent>> itemHandlers = new HashMap<>();
-    private final List<Consumer<InventoryOpenEvent>> openHandlers = new ArrayList<>();
-    private final List<Consumer<InventoryCloseEvent>> closeHandlers = new ArrayList<>();
-    private final List<Consumer<InventoryClickEvent>> clickHandlers = new ArrayList<>();
-    private final List<Consumer<InventoryDragEvent>> dragHandlers = new ArrayList<>();
+    private final Map<Integer, Consumer<InventoryClickEvent>> itemHandlers  = new HashMap<>();
+    private final List<Consumer<InventoryOpenEvent>>          openHandlers  = new ArrayList<>();
+    private final List<Consumer<InventoryCloseEvent>>         closeHandlers = new ArrayList<>();
+    private final List<Consumer<InventoryClickEvent>>         clickHandlers = new ArrayList<>();
+    private final List<Consumer<InventoryDragEvent>>          dragHandlers  = new ArrayList<>();
 
     private final Inventory inventory;
 
@@ -291,8 +299,8 @@ public class FastInv implements InventoryHolder {
     }
 
     /**
-     * Add a close filter to prevent players from closing the inventory.
-     * To prevent a player from closing the inventory the predicate should return {@code true}.
+     * Add a close filter to prevent players from closing the inventory. To prevent a player from closing the inventory
+     * the predicate should return {@code true}.
      *
      * @param closeFilter The close filter
      */
@@ -352,8 +360,8 @@ public class FastInv implements InventoryHolder {
      */
     public int[] getBorders() {
         int size = this.inventory.getSize();
-        return IntStream.range(0, size).filter(i -> size < 27 || i < 9
-            || i % 9 == 0 || (i - 8) % 9 == 0 || i > size - 9).toArray();
+        return IntStream.range(0, size)
+            .filter(i -> size < 27 || i < 9 || i % 9 == 0 || (i - 8) % 9 == 0 || i > size - 9).toArray();
     }
 
     /**
@@ -363,9 +371,9 @@ public class FastInv implements InventoryHolder {
      */
     public int[] getCorners() {
         int size = this.inventory.getSize();
-        return IntStream.range(0, size).filter(i -> i < 2 || (i > 6 && i < 10)
-            || i == 17 || i == size - 18
-            || (i > size - 11 && i < size - 7) || i > size - 3).toArray();
+        return IntStream.range(0, size).filter(
+            i -> i < 2 || (i > 6 && i < 10) || i == 17 || i == size - 18 || (i > size - 11 && i < size - 7)
+                || i > size - 3).toArray();
     }
 
     /**
@@ -374,7 +382,7 @@ public class FastInv implements InventoryHolder {
      * @return the Bukkit inventory
      */
     @Override
-    public Inventory getInventory() {
+    public @NotNull Inventory getInventory() {
         return this.inventory;
     }
 

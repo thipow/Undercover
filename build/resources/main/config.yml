@@ -1,9 +1,11 @@
 default-settings:
   showUndercoverNames: false
   whiteEnabled: true
-  slots: 10
-  undercoverCount: 3
-  whiteCount: 1
+  private-votes: false
+  slots: 12
+  undercoverCount: 4
+  meeting-time: 20
+  show-roles: false
 
 messages:
   prefix: "§c§lUNDERCOVER §7| §r"

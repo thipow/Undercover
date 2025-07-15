@@ -1,18 +1,18 @@
 package fr.thipow.undercover.game;
 
 /**
- * Represents the different roles available in the Undercover game.
- * Each role has a display name and an associated color code.
+ * Represents the different roles available in the Undercover game. Each role has a display name and an associated color
+ * code.
+ *
  * @author Thipow
  */
 public enum ERoles {
 
-    UNDERCOVER("Undercover", "§c"),
-    CIVIL("Civil", "§b"),
-    MR_WHITE("Mr. White", "§f");
+    UNDERCOVER("Undercover", "§c", "undercover"), CIVIL("Civil", "§b", "civil"), MR_WHITE("Mr. White", "§f", "white");
 
     private final String name;
     private final String color;
+    private final String identifier;
 
     /**
      * Constructs a new role with its display name and color code.
@@ -20,9 +20,14 @@ public enum ERoles {
      * @param name  The display name of the role.
      * @param color The color code associated with the role.
      */
-    ERoles(String name, String color) {
+    ERoles(String name, String color, String identifier) {
         this.name = name;
         this.color = color;
+        this.identifier = identifier;
+    }
+
+    public String getIdentifier() {
+        return identifier;
     }
 
     /**
